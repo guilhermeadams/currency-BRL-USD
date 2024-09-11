@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BRL to USD Exchange Rate Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .card {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        #latest-rate {
+            font-size: 2em;
+            font-weight: bold;
+            text-align: center;
+            color: #27ae60;
+        }
+        #last-updated {
+            text-align: center;
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        #chart-container {
+            width: 100%;
+            height: 400px;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input, select, button {
+            padding: 10px;
+            border: 1px solid #3498db;
+            border-radius: 4px;
+            font-size: 1em;
+        }
+        button {
+            background-color: #3498db;
+            color: #fff;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #error-message {
+            background-color: #e74c3c;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>BRL to USD Exchange Rate Dashboard</h1>
+
+    <div id="error-message"></div>
+
+    <div class="card">
+        <h2>Latest BRL to USD Exchange Rate</h2>
+        <div id="latest-rate">Loading...</div>
+        <div id="last-updated"></div>
+    </div>
+
+    <div class="card">
+        <h2>Historical Rates</h2>
+        <div class="controls">
+            <input type="date" id="start-date" title="Start Date">
+            <input type="date" id="end-date" title="End Date">
+            <input type="number" id="days" min="1" max="365" value="30" title="Number of days">
+            <select id="mode" title="Query Mode">
+                <option value="date">Date Range</option>
+                <option value="days">Number of Days</option>
+            </select>
+            <button id="update-chart-btn">Update Chart</button>
+        </div>
+        <canvas id="chart-container"></canvas>
+    </div>
+
+    <button id="refresh-btn">Refresh Latest Rate</button>
+    <script>
+    const API_BASE_URL = '/api';
+    const latestRateElement = document.getElementById('latest-rate');
+    const lastUpdatedElement = document.getElementById('last-updated');
+    const chartContainer = document.getElementById('chart-container');
+    const refreshButton = document.getElementById('refresh-btn');
+    const updateChartButton = document.getElementById('update-chart-btn');
+    const errorMessage = document.getElementById('error-message');
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+    const daysInput = document.getElementById('days');
+    const modeSelect = document.getElementById('mode');
+
+    let chart;
+
+    async function fetchLatestRate() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/latest`);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const data = await response.json();
+            latestRateElement.textContent = `${data.bid} BRL = 1 USD`;
+            lastUpdatedElement.textContent = `Last updated: ${data.create_date}`;
+        } catch (error) {
+            console.error('Error fetching latest rate:', error);
+            showError('Failed to fetch latest exchange rate data');
+        }
+    }
+
+    async function fetchHistoricalRates() {
+        try {
+            let url;
+            if (modeSelect.value === 'date') {
+                const startDate = startDateInput.value.replace(/-/g, '');
+                const endDate = endDateInput.value.replace(/-/g, '');
+                url = `${API_BASE_URL}/historical?start_date=${startDate}&end_date=${endDate}`;
+            } else {
+                const days = daysInput.value;
+                url = `${API_BASE_URL}/historical?days=${days}`;
+            }
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const data = await response.json();
+            updateChart(data);
+        } catch (error) {
+            console.error('Error fetching historical rates:', error);
+            showError('Failed to fetch historical exchange rate data');
+        }
+    }
+
+    function updateChart(data) {
+        const labels = data.map(item => item.date); // Using formatted date from the backend
+        const rates = data.map(item => parseFloat(item.bid));
+
+        if (chart) {
+            chart.destroy();
+        }
+
+        chart = new Chart(chartContainer, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Exchange Rate (BRL per 1 USD)',
+                    data: rates,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        reverse: true
+                    },
+                    y: {
+                        beginAtZero: false
+                    }
+                }
+            }
+        });
+    }
+
+    function showError(message) {
+        errorMessage.textContent = message;
+        errorMessage.style.display = 'block';
+        setTimeout(() => {
+            errorMessage.style.display = 'none';
+        }, 5000);
+    }
+
+    refreshButton.addEventListener('click', fetchLatestRate);
+    updateChartButton.addEventListener('click', fetchHistoricalRates);
+
+    modeSelect.addEventListener('change', () => {
+        if (modeSelect.value === 'date') {
+            startDateInput.style.display = 'inline-block';
+            endDateInput.style.display = 'inline-block';
+            daysInput.style.display = 'none';
+        } else {
+            startDateInput.style.display = 'none';
+            endDateInput.style.display = 'none';
+            daysInput.style.display = 'inline-block';
+        }
+    });
+
+    // Set default dates
+    const today = new Date();
+    const thirtyDaysAgo = new Date(today.getTime() - (30 * 24 * 60 * 60 * 1000));
+    endDateInput.value = today.toISOString().split('T')[0];
+    startDateInput.value = thirtyDaysAgo.toISOString().split('T')[0];
+
+    // Initial data fetch
+    fetchLatestRate();
+    fetchHistoricalRates();
+
+    // Refresh latest rate every minute
+    setInterval(fetchLatestRate, 60000);
+</script>
+
+</body>
+</html>
